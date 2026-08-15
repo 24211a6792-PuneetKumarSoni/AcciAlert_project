@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AcciAlert | Emergency Accident Response System</title>
+  
+  <!-- Google Fonts & Font Awesome Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- Leaflet CSS for Maps -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="app-header">
+    <div class="logo-area">
+      <div class="logo-icon">
+        <i class="fa-solid fa-car-burst"></i>
+      </div>
+      <div class="logo-text">
+        <h1>AcciAlert</h1>
+        <p>IoT Accident Monitoring & Emergency Response System</p>
+      </div>
+    </div>
+    
+    <div class="header-actions">
+      <!-- Theme Switcher Button -->
+      <button id="themeToggleBtn" class="btn btn-secondary" title="Switch Theme">
+        <i class="fa-solid fa-moon" id="themeIcon"></i> <span id="themeText">Dark Mode</span>
+      </button>
+
+      <!-- Siren Audio Toggle Button (Synced with Buzzer) -->
+      <button id="sirenToggleBtn" class="btn btn-secondary">
+        <i class="fa-solid fa-volume-high"></i> Siren Audio: <span id="sirenStateText">ON</span>
+      </button>
+
+      <!-- Trigger Simulator Button -->
+      <button id="triggerMockBtn" class="btn btn-danger glowing-btn">
+        <i class="fa-solid fa-bolt"></i> Simulate Accident Trigger
+      </button>
+
+      <!-- Server & Database Connection Badge -->
+      <div class="server-status-pill" id="serverStatusPill">
+        <span class="status-dot green"></span>
+        <span id="serverStatusText">Server: Connected</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Emergency Banner (Appears when accident is detected) -->
+  <div id="emergencyBanner" class="emergency-banner hidden">
+    <div class="banner-content">
+      <div class="siren-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <div class="banner-text">
+        <h2>ACCIDENT ALERT DETECTED!</h2>
+        <p>
+          <span id="bannerVehicle">VEHICLE #1</span> | Impact Force: <strong id="bannerGforce">0.0 G</strong> | Impact Level: <span class="severity-tag critical" id="bannerSeverity">HIGH</span>
+        </p>
+        <p class="banner-call-info">
+          <i class="fa-solid fa-phone-volume"></i> Emergency Call Target: <strong id="bannerContactNumber">+91 9876543210</strong>
+        </p>
+      </div>
+    </div>
+    <div class="banner-timer">
+      <div class="timer-circle">
+        <span id="graceTimer">15</span>s
+      </div>
+      <small>Countdown</small>
+      <button id="cancelAlertBtn" class="btn btn-success-lg">
+        <i class="fa-solid fa-circle-check"></i> I AM OK (CANCEL ALERT)
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Grid Dashboard Layout -->
+  <main class="dashboard-container">
+
+    <!-- TOP ROW: Active Incident Desk & Editable Emergency Contacts -->
+    <div class="grid-layout top-grid">
+      
+      <!-- Card 1: Active Incident Response Desk -->
+      <section class="glass-card active-incidents-card">
+        <div class="card-header">
+          <h3><i class="fa-solid fa-bell-concierge"></i> Incident Response Desk</h3>
+          <span class="counter-badge" id="activeCount">0 Active</span>
+        </div>
+        
+        <div class="card-body">
+          <div id="activeIncidentList" class="incident-list">
+            <div class="empty-state">
+              <i class="fa-solid fa-shield-heart"></i>
+              <p>No active emergencies reported. Sensors armed and monitoring.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Card 2: Editable Emergency Contact Configurator -->
+      <section class="glass-card contacts-card">
+        <div class="card-header">
+          <h3><i class="fa-solid fa-phone-flip"></i> Emergency Contact Configurator</h3>
+        </div>
+
+        <div class="card-body">
+          <p class="section-desc">
+            Set the emergency contact number below. When an accident occurs, automated voice calls and live Google Maps location coordinates will be sent to this number.
+          </p>
+
+          <form id="contactForm" class="contact-form" onsubmit="return false;">
+            <div class="input-group">
+              <label for="contactInput"><i class="fa-solid fa-mobile-retro"></i> Set Emergency Contact Phone Number:</label>
+              <div class="input-wrapper">
+                <input type="text" id="contactInput" value="+91 9876543210" placeholder="+91 9876543210" required />
+                <button type="button" id="saveContactBtn" class="btn btn-primary">
+                  <i class="fa-solid fa-floppy-disk"></i> Save & Sync Contact
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <div class="saved-contacts-box">
+            <h4>Active Call & SMS Recipient:</h4>
+            <div id="contactDisplayBox" class="active-contact-card">
+              <i class="fa-solid fa-phone-volume"></i>
+              <span id="activeContactText">+91 9876543210</span>
+              <span class="badge-primary">TARGET CONTACT</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- MIDDLE ROW: Real Live Map & Nearby Emergency Hospitals -->
+    <div class="grid-layout middle-grid">
+      
+      <!-- Interactive Leaflet Map Container -->
+      <section class="glass-card map-card">
+        <div class="card-header">
+          <h3><i class="fa-solid fa-map-location-dot"></i> Live Accident Location & Coordinates</h3>
+          <div class="map-controls">
+            <button id="recenterMapBtn" class="btn btn-sm btn-outline"><i class="fa-solid fa-crosshairs"></i> Recenter Map</button>
+          </div>
+        </div>
+        <div class="card-body map-wrapper">
+          <div id="accidentMap"></div>
+        </div>
+      </section>
+
+      <!-- Nearby Emergency Hospitals Panel -->
+      <section class="glass-card hospital-panel">
+        <div class="card-header">
+          <h3><i class="fa-solid fa-hospital-user"></i> Nearby Trauma Centers & Hospitals</h3>
+        </div>
+        <div class="card-body">
+          <p class="section-desc" id="hospitalSectionDesc" style="margin-bottom: 0.8rem;">
+            Awaiting accident location coordinates...
+          </p>
+
+          <div id="hospitalList" class="hospital-stack">
+            <div class="empty-state" style="padding: 1.5rem 0.5rem;">
+              <i class="fa-solid fa-hospital" style="font-size: 2rem; color: var(--text-muted); margin-bottom: 0.5rem;"></i>
+              <p style="font-size: 0.82rem;">Nearest medical trauma centers will display automatically based on detected crash coordinates.</p>
+            </div>
+          </div>
+
+          <div class="action-buttons-stack" style="margin-top: 1rem;">
+            <a id="navGoogleBtn" href="https://maps.google.com" target="_blank" class="btn btn-primary btn-block hidden">
+              <i class="fa-solid fa-diamond-turn-right"></i> Open Navigation in Google Maps
+            </a>
+            <button id="hardwareResetBtn" class="btn btn-success-block" style="margin-top: 0.5rem;">
+              <i class="fa-solid fa-circle-check"></i> I AM OK (CANCEL ALERT)
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- BOTTOM ROW: Sensor Feed & Analytics Chart & Log Table -->
+    <div class="grid-layout bottom-grid">
+      
+      <!-- Sensor Data & Collision Chart -->
+      <section class="glass-card analytics-card">
+        <div class="card-header">
+          <h3><i class="fa-solid fa-chart-line"></i> Impact Force Sensor Graph</h3>
+        </div>
+        <div class="card-body chart-wrapper">
+          <canvas id="collisionChart"></canvas>
+        </div>
+      </section>
+
+      <!-- Historical Accident Reports Table -->
+      <section class="glass-card history-card">
+        <div class="card-header">
+          <h3><i class="fa-solid fa-clock-rotate-left"></i> Accident Reports Log</h3>
+          <button id="exportCsvBtn" class="btn btn-sm btn-outline"><i class="fa-solid fa-download"></i> Export CSV</button>
+        </div>
+        <div class="card-body table-responsive">
+          <table class="accialert-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Vehicle ID</th>
+                <th>Impact Force</th>
+                <th>Emergency Contact</th>
+                <th>Severity</th>
+                <th>Voice Call</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="accidentTableBody">
+              <tr>
+                <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                  No historical accidents logged yet. Real hardware data will record automatically upon sensor impact.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <p>AcciAlert &copy; <span id="footerYear">2026</span> | Emergency Response System</p>
+  </footer>
+
+  <!-- Leaflet JS & Chart.js CDN -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Application Logic (script.js) -->
+  <script src="script.js"></script>
+</body>
+</html>
