@@ -18,7 +18,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Serve static frontend web files directly (index.html, styles.css, script.js)
-//app.use(express.static(path.join(__dirname, '../frontend','index.html')));
+app.use(express.static(path.join(__dirname,'index.html')));
 
 // MongoDB Atlas Connection URL
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://puneetkumarsoni79_db_user:ozO9Qx2iGSQTfp1Q@cluster0.rnm4p14.mongodb.net/AcciAlert?retryWrites=true&w=majority';
