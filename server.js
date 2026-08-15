@@ -1,0 +1,400 @@
+require('dotenv').config();
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const path = require('path');
+
+const Accident = require('./models/Accident');
+const Telemetry = require('./models/Telemetry');
+const Settings = require('./models/Settings');
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// Enable CORS for all origins & headers to prevent browser CORS block errors
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve static frontend files directly from backend server (http://localhost:5000)
+app.use(express.static(path.join(__dirname, '../frontend')));
+
+// In-Memory Fallback State
+let isMongoConnected = false;
+const inMemoryAccidents = [];
+const inMemoryTelemetry = [];
+let activeEmergencyContacts = ['+91 9876543210'];
+const resetSignals = {};
+
+// MongoDB Connection Setup
+const connectDB = async () => {
+  const uri = process.env.MONGODB_URI;
+  if (!uri || uri.includes('your_password')) {
+    console.warn('⚠️ MONGODB_URI not configured. Running in resilient local storage mode.');
+    return;
+  }
+  try {
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
+    isMongoConnected = true;
+    console.log('✅ Connected successfully to MongoDB Atlas Database!');
+    
+    // Load persisted Emergency Contacts from MongoDB Atlas
+    const savedSettings = await Settings.findOne({ key: 'emergency_contacts' });
+    if (savedSettings && savedSettings.contacts.length > 0) {
+      activeEmergencyContacts = savedSettings.contacts;
+      console.log('📱 Loaded Persisted Emergency Contacts from MongoDB Atlas:', activeEmergencyContacts);
+    }
+  } catch (err) {
+    console.error('❌ MongoDB Connection Error:', err.message);
+    console.warn('⚠️ Defaulting to resilient local storage mode.');
+  }
+};
+connectDB();
+
+// ----------------------------------------------------
+// API ROUTES
+// ----------------------------------------------------
+
+// 1. Health Check
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ONLINE',
+    system: 'AcciAlert Emergency API Server',
+    databaseConnected: isMongoConnected,
+    timestamp: new Date()
+  });
+});
+
+// 2. Emergency Contact Settings Endpoints (Persistent MongoDB Atlas Storage)
+app.get('/api/settings/contacts', async (req, res) => {
+  try {
+    if (isMongoConnected) {
+      const savedSettings = await Settings.findOne({ key: 'emergency_contacts' });
+      if (savedSettings && savedSettings.contacts.length > 0) {
+        activeEmergencyContacts = savedSettings.contacts;
+      }
+    }
+    res.json({ success: true, contacts: activeEmergencyContacts });
+  } catch (err) {
+    res.json({ success: true, contacts: activeEmergencyContacts });
+  }
+});
+
+app.post('/api/settings/contacts', async (req, res) => {
+  try {
+    const { contacts } = req.body;
+    if (!contacts || !Array.isArray(contacts) || contacts.length === 0) {
+      return res.status(400).json({ success: false, message: 'Invalid contacts payload.' });
+    }
+    
+    activeEmergencyContacts = contacts.map(c => c.trim()).filter(c => c.length > 0);
+    
+    if (isMongoConnected) {
+      await Settings.findOneAndUpdate(
+        { key: 'emergency_contacts' },
+        { contacts: activeEmergencyContacts },
+        { upsert: true, new: true }
+      );
+      console.log('💾 Emergency Contacts saved permanently to MongoDB Atlas:', activeEmergencyContacts);
+    }
+    
+    res.json({ success: true, message: 'Emergency contacts updated permanently!', contacts: activeEmergencyContacts });
+  } catch (err) {
+    console.error('Error saving settings:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 3. Hardware Config & Reset Sync Polling Endpoint (Arduino calls this)
+app.get('/api/hardware/config', (req, res) => {
+  const vehicleId = req.query.vehicleId || 'VEH-IN-9874';
+  const shouldReset = resetSignals[vehicleId] || false;
+  if (shouldReset) {
+    resetSignals[vehicleId] = false;
+  }
+  res.json({
+    success: true,
+    vehicleId,
+    emergencyContact: activeEmergencyContacts[0] || '+919876543210',
+    allContacts: activeEmergencyContacts,
+    resetSignal: shouldReset
+  });
+});
+
+// 4. Hardware Trigger Endpoint (Arduino SIM Module HTTP POST target)
+app.post('/api/accidents/trigger', async (req, res) => {
+  try {
+    console.log('🚨 ACCIDENT TRIGGER RECEIVED FROM HARDWARE:', req.body);
+    const {
+      vehicleId,
+      latitude,
+      longitude,
+      gForce,
+      gx,
+      gy,
+      gz,
+      rollover,
+      satellites,
+      gsmSignal,
+      voiceCallStatus,
+      driverName
+    } = req.body;
+
+    const parsedLat = parseFloat(latitude);
+    const parsedLng = parseFloat(longitude);
+    const parsedG = parseFloat(gForce) || 3.0;
+
+    if (isNaN(parsedLat) || isNaN(parsedLng)) {
+      return res.status(400).json({ success: false, message: 'Invalid GPS coordinates provided.' });
+    }
+
+    let severity = 'Medium';
+    if (parsedG >= 5.0 || rollover === 'true' || rollover === true) {
+      severity = 'Critical';
+    } else if (parsedG >= 3.5) {
+      severity = 'High';
+    }
+
+    const newAccidentData = {
+      _id: 'acc_' + Date.now(),
+      vehicleId: vehicleId || 'VEHICLE #1',
+      driverName: driverName || 'Registered Driver',
+      emergencyContacts: activeEmergencyContacts,
+      latitude: parsedLat,
+      longitude: parsedLng,
+      speed: 0,
+      gForce: parsedG,
+      gForceAxis: {
+        x: parseFloat(gx) || 0,
+        y: parseFloat(gy) || 0,
+        z: parseFloat(gz) || 0
+      },
+      rolloverDetected: rollover === 'true' || rollover === true,
+      impactSeverity: severity,
+      status: 'ALERTED',
+      satellites: parseInt(satellites) || 0,
+      gsmSignal: parseInt(gsmSignal) || 0,
+      voiceCallStatus: voiceCallStatus || 'DIALED',
+      locationName: `Lat: ${parsedLat.toFixed(5)}, Lng: ${parsedLng.toFixed(5)} (Live Accident Location)`,
+      notes: `Impact force sensor trigger. Call & SMS sent to ${activeEmergencyContacts[0]}.`,
+      assignedAmbulanceUnit: 'Pending Dispatch',
+      timestamp: new Date()
+    };
+
+    let savedAccident;
+    if (isMongoConnected) {
+      const accidentDoc = new Accident(newAccidentData);
+      savedAccident = await accidentDoc.save();
+    } else {
+      inMemoryAccidents.unshift(newAccidentData);
+      savedAccident = newAccidentData;
+    }
+
+    res.status(201).json({
+      success: true,
+      message: '🚨 Accident Alert Registered!',
+      targetEmergencyContact: activeEmergencyContacts[0],
+      accident: savedAccident
+    });
+  } catch (error) {
+    console.error('Error handling accident trigger:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 5. Get Active Emergencies
+app.get('/api/accidents/active', async (req, res) => {
+  try {
+    if (isMongoConnected) {
+      const active = await Accident.find({ status: { $in: ['ALERTED', 'DISPATCHED', 'ON_SCENE'] } }).sort({ timestamp: -1 });
+      return res.json({ success: true, count: active.length, data: active });
+    }
+    const active = inMemoryAccidents.filter(a => ['ALERTED', 'DISPATCHED', 'ON_SCENE'].includes(a.status));
+    res.json({ success: true, count: active.length, data: active });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 6. Get All Accident Logs
+app.get('/api/accidents', async (req, res) => {
+  try {
+    const { status, severity, limit = 50 } = req.query;
+
+    if (isMongoConnected) {
+      let query = {};
+      if (status) query.status = status;
+      if (severity) query.impactSeverity = severity;
+      const logs = await Accident.find(query).sort({ timestamp: -1 }).limit(parseInt(limit));
+      return res.json({ success: true, count: logs.length, data: logs });
+    }
+
+    let logs = [...inMemoryAccidents];
+    if (status) logs = logs.filter(a => a.status === status);
+    if (severity) logs = logs.filter(a => a.impactSeverity === severity);
+    res.json({ success: true, count: logs.length, data: logs.slice(0, parseInt(limit)) });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 7. Update Incident Status
+app.patch('/api/accidents/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, assignedAmbulanceUnit, notes } = req.body;
+
+    const allowedStatuses = ['ALERTED', 'DISPATCHED', 'ON_SCENE', 'RESOLVED', 'FALSE_ALARM'];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status parameter.' });
+    }
+
+    if (isMongoConnected) {
+      const updated = await Accident.findByIdAndUpdate(
+        id,
+        {
+          ...(status && { status }),
+          ...(assignedAmbulanceUnit && { assignedAmbulanceUnit }),
+          ...(notes && { notes })
+        },
+        { new: true }
+      );
+      return res.json({ success: true, message: 'Status updated successfully', data: updated });
+    }
+
+    const item = inMemoryAccidents.find(a => a._id === id || a._id.toString() === id);
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'Accident report not found.' });
+    }
+    if (status) item.status = status;
+    if (assignedAmbulanceUnit) item.assignedAmbulanceUnit = assignedAmbulanceUnit;
+    if (notes) item.notes = notes;
+
+    res.json({ success: true, message: 'Status updated successfully', data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 8. Cancel Alert & Hardware Reset
+app.post('/api/accidents/:id/cancel', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason, vehicleId } = req.body;
+    const targetVeh = vehicleId || 'VEH-IN-9874';
+
+    resetSignals[targetVeh] = true;
+    console.log(`🔄 HARDWARE RESET SIGNAL TRIGGERED for Vehicle: ${targetVeh}`);
+
+    if (isMongoConnected) {
+      const updated = await Accident.findByIdAndUpdate(
+        id,
+        { status: 'FALSE_ALARM', notes: `Canceled by driver (I AM OK): ${reason || 'User reset alert'}` },
+        { new: true }
+      );
+      return res.json({ success: true, message: 'Alert canceled and hardware reset signal sent.', data: updated });
+    }
+
+    const item = inMemoryAccidents.find(a => a._id === id || a._id.toString() === id);
+    if (item) {
+      item.status = 'FALSE_ALARM';
+      item.notes = `Canceled by driver (I AM OK): ${reason || 'User reset alert'}`;
+    }
+    res.json({ success: true, message: 'Alert canceled and hardware reset signal sent.', data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 9. Hardware Telemetry Log Route
+app.post('/api/telemetry', async (req, res) => {
+  try {
+    const { vehicleId, latitude, longitude, gForce, satellites, gsmSignal } = req.body;
+    const data = {
+      vehicleId: vehicleId || 'VEHICLE #1',
+      latitude: parseFloat(latitude) || 12.9716,
+      longitude: parseFloat(longitude) || 77.5946,
+      speed: 0,
+      gForce: parseFloat(gForce) || 0.0,
+      satellites: parseInt(satellites) || 0,
+      gsmSignal: parseInt(gsmSignal) || 0,
+      timestamp: new Date()
+    };
+
+    if (isMongoConnected) {
+      const doc = new Telemetry(data);
+      await doc.save();
+    } else {
+      inMemoryTelemetry.unshift(data);
+      if (inMemoryTelemetry.length > 50) inMemoryTelemetry.pop();
+    }
+
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 10. Fetch Latest Telemetry
+app.get('/api/telemetry/latest', async (req, res) => {
+  try {
+    if (isMongoConnected) {
+      const latest = await Telemetry.find().sort({ timestamp: -1 }).limit(10);
+      return res.json({ success: true, data: latest });
+    }
+    res.json({ success: true, data: inMemoryTelemetry.slice(0, 10) });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 11. Test Hardware Trigger Simulator
+app.post('/api/accidents/mock', async (req, res) => {
+  try {
+    const sampleLocations = [
+      { name: 'Sector 4 Highway Intersection', lat: 12.9716, lng: 77.5946 },
+      { name: 'Koramangala Ring Road', lat: 12.9345, lng: 77.6212 },
+      { name: 'Electronic City Toll Gate', lat: 12.8452, lng: 77.6602 }
+    ];
+    const loc = sampleLocations[Math.floor(Math.random() * sampleLocations.length)];
+    const gForceVal = (Math.random() * 3.5 + 2.8).toFixed(2);
+
+    const mockBody = {
+      vehicleId: 'VEHICLE #1',
+      driverName: 'Registered Driver',
+      latitude: loc.lat,
+      longitude: loc.lng,
+      gForce: parseFloat(gForceVal),
+      gx: (parseFloat(gForceVal) * 0.6).toFixed(2),
+      gy: (parseFloat(gForceVal) * 0.7).toFixed(2),
+      gz: (parseFloat(gForceVal) * 0.4).toFixed(2),
+      rollover: Math.random() > 0.7,
+      satellites: Math.floor(Math.random() * 6 + 6),
+      gsmSignal: Math.floor(Math.random() * 10 + 20),
+      voiceCallStatus: 'DIALED',
+      contacts: activeEmergencyContacts
+    };
+
+    req.body = mockBody;
+    app._router.handle(req, res);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Serve frontend SPA fallback
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/index.html'));
+});
+
+// Start Server
+app.listen(PORT, () => {
+  console.log(`====================================================`);
+  console.log(`🚀 AcciAlert Server running on http://localhost:${PORT}`);
+  console.log(`====================================================`);
+});
