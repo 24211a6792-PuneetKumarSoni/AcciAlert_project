@@ -1,11 +1,15 @@
-// ====================================================
-// AcciAlert Frontend Application Logic (script.js)
-// Real-Time Accident Detection & Emergency Response System
-// ====================================================
+// CONFIGURATION: Set your live Render.com Backend URL here
+const RENDER_BACKEND_URL = 'https://accialert-project.onrender.com/api';
 
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? 'http://localhost:5000/api'
-  : 'https://accialert-project.onrender.com/api';
+// Dynamic API Base URL Selector
+let API_BASE_URL = RENDER_BACKEND_URL;
+if (window.location.protocol === 'file:') {
+  API_BASE_URL = RENDER_BACKEND_URL || 'http://localhost:5000/api';
+} else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+  API_BASE_URL = 'https://accialert-project.onrender.com/api';
+}
+
+console.log('🔗 AcciAlert API Base URL connected to:', API_BASE_URL);
 
 // Application State
 const state = {
@@ -18,7 +22,7 @@ const state = {
   sirenAudioEnabled: true,
   audioCtx: null,
   activeTimerId: null,
-  countdownSeconds: 15,
+  countdownSeconds: 10,
   currentEmergencyId: null,
   currentTheme: localStorage.getItem('accialert_theme') || 'dark'
 };
@@ -36,7 +40,6 @@ const serverStatusPill = document.getElementById('serverStatusPill');
 const serverStatusText = document.getElementById('serverStatusText');
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const themeIcon = document.getElementById('themeIcon');
-const themeText = document.getElementById('themeText');
 const sirenToggleBtn = document.getElementById('sirenToggleBtn');
 const sirenStateText = document.getElementById('sirenStateText');
 const triggerMockBtn = document.getElementById('triggerMockBtn');
@@ -62,9 +65,8 @@ const exportCsvBtn = document.getElementById('exportCsvBtn');
 const recenterMapBtn = document.getElementById('recenterMapBtn');
 const footerYear = document.getElementById('footerYear');
 
-// ----------------------------------------------------
-// 1. INITIALIZATION & LIFECYCLE
-// ----------------------------------------------------
+
+//INITIALIZATION & LIFECYCLE
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   initMap();
@@ -90,9 +92,7 @@ function setDynamicYear() {
   }
 }
 
-// ----------------------------------------------------
-// 2. THEME SWITCHER MODULE
-// ----------------------------------------------------
+// THEME SWITCHER MODULE (Icon Symbol Toggle Only)
 function initTheme() {
   document.documentElement.setAttribute('data-theme', state.currentTheme);
   updateThemeUI();
@@ -109,16 +109,14 @@ function toggleTheme() {
 function updateThemeUI() {
   if (state.currentTheme === 'light') {
     themeIcon.className = 'fa-solid fa-sun';
-    themeText.innerText = 'Light Mode';
+    themeToggleBtn.setAttribute('title', 'Switch to Dark Mode');
   } else {
     themeIcon.className = 'fa-solid fa-moon';
-    themeText.innerText = 'Dark Mode';
+    themeToggleBtn.setAttribute('title', 'Switch to Light Mode');
   }
 }
 
-// ----------------------------------------------------
-// 3. AUDIO SIREN SYNTHESIZER (Synced with Buzzer Sound)
-// ----------------------------------------------------
+// AUDIO SIREN SYNTHESIZER (Synced with Hardware Pin 11 Buzzer)
 function playSirenSound() {
   if (!state.sirenAudioEnabled) return;
 
@@ -150,10 +148,7 @@ function playSirenSound() {
     console.warn('Audio policy restriction:', err);
   }
 }
-
-// ----------------------------------------------------
-// 4. MAP INITIALIZATION & PANNING (Leaflet.js)
-// ----------------------------------------------------
+//MAP INITIALIZATION & PANNING (Leaflet.js)
 function initMap() {
   const defaultLat = 12.9716;
   const defaultLng = 77.5946;
@@ -224,9 +219,7 @@ function updateMapMarkers(incidents) {
   }
 }
 
-// ----------------------------------------------------
-// 5. DYNAMIC ACCIDENT LOCATION NEARBY HOSPITALS
-// ----------------------------------------------------
+// DYNAMIC ACCIDENT LOCATION NEARBY HOSPITALS
 function calculateDistanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -276,9 +269,7 @@ function resetHospitalPanel() {
   navGoogleBtn.classList.add('hidden');
 }
 
-// ----------------------------------------------------
-// 6. CHART INITIALIZATION (Chart.js)
-// ----------------------------------------------------
+// CHART INITIALIZATION (Chart.js)
 function initChart() {
   const ctx = document.getElementById('collisionChart').getContext('2d');
   state.chart = new Chart(ctx, {
@@ -323,9 +314,7 @@ function updateChartColors() {
   state.chart.update();
 }
 
-// ----------------------------------------------------
-// 7. SERVER & DATABASE HEALTH MONITORING
-// ----------------------------------------------------
+// SERVER & DATABASE HEALTH MONITORING
 async function checkServerHealth() {
   try {
     const res = await fetch(`${API_BASE_URL}/health`);
@@ -335,6 +324,7 @@ async function checkServerHealth() {
       serverStatusText.innerText = 'Server: Connected';
     }
   } catch (err) {
+    console.warn('Server health check failed at:', `${API_BASE_URL}/health`, err);
     serverStatusPill.querySelector('.status-dot').className = 'status-dot red';
     serverStatusText.innerText = 'Server: Disconnected';
   }
@@ -372,7 +362,7 @@ async function fetchActiveIncidents() {
       }
     }
   } catch (err) {
-    console.warn('Incident fetch error');
+    console.warn('Incident fetch error at:', `${API_BASE_URL}/accidents/active`, err);
   }
 }
 
@@ -400,10 +390,7 @@ function updateChartWithRealLogs(logs) {
   state.chart.data.datasets[0].data = values;
   state.chart.update();
 }
-
-// ----------------------------------------------------
-// 8. UI RENDERERS
-// ----------------------------------------------------
+//UI RENDERERS
 function renderContactsUI() {
   const current = state.emergencyContacts[0] || localStorage.getItem('accialert_contact') || '+91 9876543210';
   contactInput.value = current;
@@ -482,9 +469,10 @@ function hideEmergencyBanner() {
   }
 }
 
+// 10-Second Grace Period Countdown
 function startGracePeriodTimer() {
   if (state.activeTimerId) return;
-  state.countdownSeconds = 15;
+  state.countdownSeconds = 10;
   document.getElementById('graceTimer').innerText = state.countdownSeconds;
 
   state.activeTimerId = setInterval(() => {
@@ -501,9 +489,7 @@ function startGracePeriodTimer() {
   }, 1000);
 }
 
-// ----------------------------------------------------
-// 9. EVENT HANDLERS & CONTACT SYNC
-// ----------------------------------------------------
+// EVENT HANDLERS & CONTACT SYNC
 function setupEventListeners() {
   themeToggleBtn.addEventListener('click', toggleTheme);
 
@@ -523,7 +509,7 @@ function setupEventListeners() {
       fetchActiveIncidents();
       fetchHistoricalLogs();
     } catch (err) {
-      alert('Mock trigger failed. Ensure server.js backend is running!');
+      alert('Mock trigger failed. Check your API connection at ' + API_BASE_URL);
       triggerMockBtn.innerHTML = '<i class="fa-solid fa-bolt"></i> Simulate Accident Trigger';
     }
   });
