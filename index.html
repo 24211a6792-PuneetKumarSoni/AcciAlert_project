@@ -32,12 +32,12 @@
     </div>
     
     <div class="header-actions">
-      <!-- Theme Switcher Button -->
-      <button id="themeToggleBtn" class="btn btn-secondary" title="Switch Theme">
-        <i class="fa-solid fa-moon" id="themeIcon"></i> <span id="themeText">Dark Mode</span>
+      <!-- Theme Switcher Symbol Button (Professional Icon Only) -->
+      <button id="themeToggleBtn" class="icon-btn-symbol" title="Toggle Light/Dark Theme" aria-label="Toggle Theme">
+        <i class="fa-solid fa-moon" id="themeIcon"></i>
       </button>
 
-      <!-- Siren Audio Toggle Button (Synced with Buzzer) -->
+      <!-- Siren Audio Toggle Button (Synced with Pin 11 Buzzer) -->
       <button id="sirenToggleBtn" class="btn btn-secondary">
         <i class="fa-solid fa-volume-high"></i> Siren Audio: <span id="sirenStateText">ON</span>
       </button>
@@ -47,7 +47,7 @@
         <i class="fa-solid fa-bolt"></i> Simulate Accident Trigger
       </button>
 
-      <!-- Server & Database Connection Badge -->
+      <!-- Server Connection Badge -->
       <div class="server-status-pill" id="serverStatusPill">
         <span class="status-dot green"></span>
         <span id="serverStatusText">Server: Connected</span>
@@ -71,7 +71,7 @@
     </div>
     <div class="banner-timer">
       <div class="timer-circle">
-        <span id="graceTimer">15</span>s
+        <span id="graceTimer">10</span>s
       </div>
       <small>Countdown</small>
       <button id="cancelAlertBtn" class="btn btn-success-lg">
