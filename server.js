@@ -7,7 +7,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Enable CORS for browser access
+// Enable CORS 
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
@@ -23,9 +23,7 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 // MongoDB Atlas Connection URL
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://puneetkumarsoni79_db_user:ozO9Qx2iGSQTfp1Q@cluster0.rnm4p14.mongodb.net/AcciAlert?retryWrites=true&w=majority';
 
-// ----------------------------------------------------
 // INLINE MONGOOSE SCHEMAS & MODELS
-// ----------------------------------------------------
 const accidentSchema = new mongoose.Schema({
   vehicleId: { type: String, default: 'VEHICLE #1' },
   driverName: { type: String, default: 'Registered Driver' },
@@ -102,11 +100,8 @@ const connectDB = async () => {
 };
 connectDB();
 
-// ----------------------------------------------------
 // API ROUTES
-// ----------------------------------------------------
-
-// 1. Health Check
+// Health Check
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ONLINE',
@@ -116,7 +111,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// 2. Emergency Contact Settings Endpoints
+//Emergency Contact Settings Endpoints
 app.get('/api/settings/contacts', async (req, res) => {
   try {
     if (isMongoConnected) {
@@ -155,7 +150,7 @@ app.post('/api/settings/contacts', async (req, res) => {
   }
 });
 
-// 3. Hardware Config & Reset Sync Polling Endpoint
+// Hardware Config & Reset Sync Polling Endpoint
 app.get('/api/hardware/config', (req, res) => {
   const vehicleId = req.query.vehicleId || 'VEH-IN-9874';
   const shouldReset = resetSignals[vehicleId] || false;
@@ -171,7 +166,7 @@ app.get('/api/hardware/config', (req, res) => {
   });
 });
 
-// 4. Hardware Trigger Endpoint (Arduino GPRS HTTP POST target)
+// Hardware Trigger Endpoint (Arduino GPRS HTTP POST target)
 app.post('/api/accidents/trigger', async (req, res) => {
   try {
     console.log('🚨 ACCIDENT TRIGGER RECEIVED FROM HARDWARE:', req.body);
@@ -266,7 +261,7 @@ app.get('/api/accidents/active', async (req, res) => {
   }
 });
 
-// 6. Get All Accident Logs
+// Get All Accident Logs
 app.get('/api/accidents', async (req, res) => {
   try {
     const { status, severity, limit = 50 } = req.query;
@@ -288,7 +283,7 @@ app.get('/api/accidents', async (req, res) => {
   }
 });
 
-// 7. Update Incident Status
+// Update Incident Status
 app.patch('/api/accidents/:id/status', async (req, res) => {
   try {
     const { id } = req.params;
@@ -325,7 +320,7 @@ app.patch('/api/accidents/:id/status', async (req, res) => {
   }
 });
 
-// 8. Cancel Alert & Hardware Reset ("I AM OK" button action)
+// Cancel Alert & Hardware Reset ("I AM OK" button action)
 app.post('/api/accidents/:id/cancel', async (req, res) => {
   try {
     const { id } = req.params;
@@ -355,7 +350,7 @@ app.post('/api/accidents/:id/cancel', async (req, res) => {
   }
 });
 
-// 9. Hardware Telemetry Log Route
+//Hardware Telemetry Log Route
 app.post('/api/telemetry', async (req, res) => {
   try {
     const { vehicleId, latitude, longitude, gForce, satellites, gsmSignal } = req.body;
@@ -384,7 +379,7 @@ app.post('/api/telemetry', async (req, res) => {
   }
 });
 
-// 10. Fetch Latest Telemetry
+// Fetch Latest Telemetry
 app.get('/api/telemetry/latest', async (req, res) => {
   try {
     if (isMongoConnected) {
@@ -397,7 +392,7 @@ app.get('/api/telemetry/latest', async (req, res) => {
   }
 });
 
-// 11. Test Hardware Trigger Simulator (Recursion Free Stack Overflow Fix)
+// Test Hardware Trigger Simulator (Recursion Free Stack Overflow Fix)
 app.post('/api/accidents/mock', async (req, res) => {
   try {
     const sampleLocations = [
