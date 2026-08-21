@@ -18,7 +18,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Serve static frontend web files directly (index.html, styles.css, script.js)
-app.use(express.static(path.join(__dirname,'index.html')));
+app.use(express.static(path.join(__dirname, '../frontend')));
 
 // MongoDB Atlas Connection URL
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://puneetkumarsoni79_db_user:ozO9Qx2iGSQTfp1Q@cluster0.rnm4p14.mongodb.net/AcciAlert?retryWrites=true&w=majority';
@@ -397,7 +397,7 @@ app.get('/api/telemetry/latest', async (req, res) => {
   }
 });
 
-// 11. Test Hardware Trigger Simulator
+// 11. Test Hardware Trigger Simulator (Recursion Free Stack Overflow Fix)
 app.post('/api/accidents/mock', async (req, res) => {
   try {
     const sampleLocations = [
@@ -408,24 +408,47 @@ app.post('/api/accidents/mock', async (req, res) => {
     const loc = sampleLocations[Math.floor(Math.random() * sampleLocations.length)];
     const gForceVal = (Math.random() * 3.5 + 2.8).toFixed(2);
 
-    const mockBody = {
+    const mockData = {
+      _id: 'acc_' + Date.now(),
       vehicleId: 'VEHICLE #1',
       driverName: 'Registered Driver',
+      emergencyContacts: activeEmergencyContacts,
       latitude: loc.lat,
       longitude: loc.lng,
+      speed: 0,
       gForce: parseFloat(gForceVal),
-      gx: (parseFloat(gForceVal) * 0.6).toFixed(2),
-      gy: (parseFloat(gForceVal) * 0.7).toFixed(2),
-      gz: (parseFloat(gForceVal) * 0.4).toFixed(2),
-      rollover: Math.random() > 0.7,
+      gForceAxis: {
+        x: (parseFloat(gForceVal) * 0.6).toFixed(2),
+        y: (parseFloat(gForceVal) * 0.7).toFixed(2),
+        z: (parseFloat(gForceVal) * 0.4).toFixed(2)
+      },
+      rolloverDetected: Math.random() > 0.7,
+      impactSeverity: parseFloat(gForceVal) >= 5.0 ? 'Critical' : 'High',
+      status: 'ALERTED',
       satellites: Math.floor(Math.random() * 6 + 6),
       gsmSignal: Math.floor(Math.random() * 10 + 20),
       voiceCallStatus: 'DIALED',
-      contacts: activeEmergencyContacts
+      locationName: loc.name,
+      notes: 'Mock accident trigger simulator.',
+      assignedAmbulanceUnit: 'Pending Dispatch',
+      timestamp: new Date()
     };
 
-    req.body = mockBody;
-    app._router.handle(req, res);
+    let savedAccident;
+    if (isMongoConnected) {
+      const accidentDoc = new Accident(mockData);
+      savedAccident = await accidentDoc.save();
+    } else {
+      inMemoryAccidents.unshift(mockData);
+      savedAccident = mockData;
+    }
+
+    res.status(201).json({
+      success: true,
+      message: '🚨 Accident Alert Registered!',
+      targetEmergencyContact: activeEmergencyContacts[0],
+      accident: savedAccident
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
